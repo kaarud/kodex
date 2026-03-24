@@ -1,3 +1,7 @@
+import pytest
+from unittest.mock import patch
+
+
 def test_load_annotated_variants_single_sheet(make_filtered_xlsx):
     from igv_capture import load_annotated_variants
     path = make_filtered_xlsx({
@@ -176,6 +180,53 @@ def test_init_igv_sends_correct_commands(tmp_path):
     assert commands[0] == "new"
     assert commands[1] == "genome"
     assert commands.count("load") == 3
+
+
+def test_main_no_annotated_variants(make_filtered_xlsx, capsys):
+    from igv_capture import main
+    path = make_filtered_xlsx({
+        "HIGH_IMPACT": [
+            {"SYMBOL": "TSC1", "HGVSc": "c.100C>T", "CHR": "chr9",
+             "POS": 135786850, "REF": "C", "ALT": "T", "DP": 120,
+             "USER_CLASS": None, "USER_ANNOT": None, "USER_COM": None},
+        ]
+    })
+    with pytest.raises(SystemExit) as exc:
+        main([str(path)])
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    assert "aucun variant annoté" in captured.out.lower()
+
+
+def test_main_igv_unreachable(make_filtered_xlsx, capsys):
+    from igv_capture import main
+    path = make_filtered_xlsx({
+        "HIGH_IMPACT": [
+            {"SYMBOL": "TSC1", "HGVSc": "c.100C>T", "CHR": "chr9",
+             "POS": 135786850, "REF": "C", "ALT": "T", "DP": 120,
+             "USER_CLASS": "5", "USER_ANNOT": None, "USER_COM": None},
+        ]
+    })
+    with patch("igv_capture.check_igv", return_value=False), \
+         pytest.raises(SystemExit) as exc:
+        main([str(path)])
+    assert exc.value.code == 1
+
+
+def test_main_bams_missing(make_filtered_xlsx, tmp_path, capsys):
+    from igv_capture import main
+    path = make_filtered_xlsx({
+        "HIGH_IMPACT": [
+            {"SYMBOL": "TSC1", "HGVSc": "c.100C>T", "CHR": "chr9",
+             "POS": 135786850, "REF": "C", "ALT": "T", "DP": 120,
+             "USER_CLASS": "5", "USER_ANNOT": None, "USER_COM": None},
+        ]
+    })
+    # bam_dir exists but is empty — find_bams returns None
+    with patch("igv_capture.check_igv", return_value=True), \
+         pytest.raises(SystemExit) as exc:
+        main([str(path), "--bam-dir", str(tmp_path)])
+    assert exc.value.code == 1
 
 
 def test_capture_variant_sequence(tmp_path):
