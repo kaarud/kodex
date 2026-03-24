@@ -84,3 +84,47 @@ def test_load_annotated_variants_user_com_triggers(make_filtered_xlsx):
     })
     variants = load_annotated_variants(path)
     assert len(variants) == 1
+
+
+from unittest.mock import patch, MagicMock
+
+
+def _mock_get(status=200, text="OK"):
+    m = MagicMock()
+    m.status_code = status
+    m.text = text
+    return m
+
+
+def test_check_igv_reachable():
+    from igv_capture import check_igv
+    with patch("requests.get", return_value=_mock_get(200)):
+        assert check_igv(60151) is True
+
+
+def test_check_igv_unreachable():
+    from igv_capture import check_igv
+    with patch("requests.get", side_effect=Exception("refused")):
+        assert check_igv(60151) is False
+
+
+def test_igv_cmd_builds_correct_url():
+    from igv_capture import igv_cmd
+    with patch("requests.get", return_value=_mock_get()) as mock_get:
+        igv_cmd(60151, "goto", locus="chr9:100-200")
+        mock_get.assert_called_once_with(
+            "http://localhost:60151/goto",
+            params={"locus": "chr9:100-200"},
+            timeout=10,
+        )
+
+
+def test_igv_cmd_setPreference():
+    from igv_capture import igv_cmd
+    with patch("requests.get", return_value=_mock_get()) as mock_get:
+        igv_cmd(60151, "setPreference", name="SAM.COLOR_BY", value="READ_STRAND")
+        mock_get.assert_called_once_with(
+            "http://localhost:60151/setPreference",
+            params={"name": "SAM.COLOR_BY", "value": "READ_STRAND"},
+            timeout=10,
+        )
