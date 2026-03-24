@@ -63,6 +63,21 @@ def _find_index(bam: Path) -> Path | None:
     return None
 
 
+def check_igv(port: int) -> bool:
+    """Return True if IGV is reachable on the given port."""
+    try:
+        r = requests.get(f"http://localhost:{port}/", timeout=3)
+        return r.status_code < 500
+    except Exception:
+        return False
+
+
+def igv_cmd(port: int, command: str, **params) -> str:
+    """Send a single command to IGV HTTP API. Returns response text."""
+    r = requests.get(f"http://localhost:{port}/{command}", params=params, timeout=10)
+    return r.text
+
+
 def find_bams(sample_id: str, bam_dir: Path) -> dict | None:
     """Locate the 3 BAMs + indices for a sample. Returns None if any missing."""
     specs = {
