@@ -185,3 +185,66 @@ def find_bams(sample_id: str, bam_dir: Path) -> dict | None:
             return None
         result[key] = {"bam": bam, "bai": bai}
     return result
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Génère des captures IGV pour les variants annotés d'un XLSX filtré."
+    )
+    parser.add_argument("xlsx", type=Path, help="Fichier *_filtered.xlsx")
+    parser.add_argument("--port",    type=int,  default=60151)
+    parser.add_argument("--bam-dir", type=Path,
+                        default=Path("~/data/TSC_063/bam").expanduser())
+    parser.add_argument("--out",     type=Path,
+                        default=Path("~/data/TSC_063/igv_captures").expanduser())
+    parser.add_argument("--delay",   type=float, default=2.0)
+    parser.add_argument("--genome",  type=str,   default="hg38")
+    args = parser.parse_args(argv)
+
+    xlsx_path = args.xlsx.expanduser().resolve()
+    bam_dir   = args.bam_dir.expanduser().resolve()
+    out_dir   = args.out.expanduser().resolve()
+
+    # 1. Charger les variants annotés
+    variants = load_annotated_variants(xlsx_path)
+    if not variants:
+        print("Aucun variant annoté trouvé (USER_CLASS / USER_ANNOT / USER_COM vides).")
+        raise SystemExit(0)
+    print(f"{len(variants)} variant(s) annoté(s) à capturer.")
+
+    # 2. Vérifier IGV
+    if not check_igv(args.port):
+        print(f"[ERREUR] IGV non joignable sur le port {args.port}. "
+              "Ouvrir IGV Desktop et réessayer.")
+        raise SystemExit(1)
+
+    # 3. Trouver les BAMs
+    sample_id = extract_sample_id(xlsx_path)
+    bams = find_bams(sample_id, bam_dir)
+    if bams is None:
+        print(f"[ERREUR] BAMs manquants pour {sample_id} dans {bam_dir}. Abandon.")
+        raise SystemExit(1)
+
+    # 4. Initialiser IGV
+    sample_out = out_dir / sample_id
+    print(f"Initialisation IGV (genome={args.genome}, 3 BAMs chargés)...")
+    init_igv(args.port, bams, genome=args.genome)
+
+    # 5. Capturer chaque variant
+    for i, variant in enumerate(variants, 1):
+        chrom = variant.get("CHR", "")
+        pos   = variant.get("POS", "")
+        if not chrom or not pos:
+            print(f"[WARN] Variant {i} sans CHR/POS — ignoré.")
+            continue
+        name = build_variant_name(variant)
+        print(f"  [{i}/{len(variants)}] {name} @ {chrom}:{pos}")
+        result = capture_variant(args.port, variant, sample_out, delay=args.delay)
+        print(f"    → {result['strand'].name}")
+        print(f"    → {result['softclip'].name}")
+
+    print(f"\nCaptures terminées → {sample_out}")
+
+
+if __name__ == "__main__":
+    main()
