@@ -128,3 +128,34 @@ def test_igv_cmd_setPreference():
             params={"name": "SAM.COLOR_BY", "value": "READ_STRAND"},
             timeout=10,
         )
+
+
+def test_sanitize_filename_special_chars():
+    from igv_capture import sanitize_filename
+    assert sanitize_filename("c.100C>T") == "c.100CgtT"
+    assert sanitize_filename("c.1234+1G>A") == "c.1234+1GgtA"
+    assert sanitize_filename("c.*145del") == "c.star145del"
+    assert sanitize_filename("NM_000368.5:c.100C>T") == "NM_000368.5_c.100CgtT"
+    assert sanitize_filename("c.100 del") == "c.100_del"
+
+
+def test_sanitize_filename_empty_fallback():
+    from igv_capture import build_variant_name
+    v = {"SYMBOL": "TSC1", "HGVSc": None, "CHR": "chr9",
+         "POS": 135786850, "REF": "C", "ALT": "T"}
+    assert build_variant_name(v) == "TSC1_chr9_135786850_C_T"
+
+
+def test_build_variant_name_normal():
+    from igv_capture import build_variant_name
+    v = {"SYMBOL": "TSC2", "HGVSc": "c.500A>G", "CHR": "chr16",
+         "POS": 2000000, "REF": "A", "ALT": "G"}
+    assert build_variant_name(v) == "TSC2_c.500AgtG"
+
+
+def test_normalize_chr():
+    from igv_capture import normalize_chr
+    assert normalize_chr("9") == "chr9"
+    assert normalize_chr("chr9") == "chr9"
+    assert normalize_chr("chrX") == "chrX"
+    assert normalize_chr("X") == "chrX"

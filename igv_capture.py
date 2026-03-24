@@ -78,6 +78,38 @@ def igv_cmd(port: int, command: str, **params) -> str:
     return r.text
 
 
+def sanitize_filename(s: str) -> str:
+    """Replace special characters unsafe for filenames."""
+    return (str(s)
+            .replace(">", "gt")
+            .replace("/", "_")
+            .replace("*", "star")
+            .replace(":", "_")
+            .replace(" ", "_"))
+
+
+def build_variant_name(variant: dict) -> str:
+    """Build a safe filename stem for a variant."""
+    symbol = variant.get("SYMBOL") or "UNK"
+    hgvsc = variant.get("HGVSc")
+    if hgvsc and str(hgvsc).strip() not in ("", "nan", "None"):
+        return f"{symbol}_{sanitize_filename(hgvsc)}"
+    # Fallback to genomic coordinates
+    chr_ = variant.get("CHR", "")
+    pos  = variant.get("POS", "")
+    ref  = variant.get("REF", "")
+    alt  = variant.get("ALT", "")
+    return f"{symbol}_{chr_}_{pos}_{ref}_{alt}"
+
+
+def normalize_chr(chrom: str) -> str:
+    """Ensure chromosome name has 'chr' prefix."""
+    chrom = str(chrom).strip()
+    if not chrom.startswith("chr"):
+        return f"chr{chrom}"
+    return chrom
+
+
 def find_bams(sample_id: str, bam_dir: Path) -> dict | None:
     """Locate the 3 BAMs + indices for a sample. Returns None if any missing."""
     specs = {
