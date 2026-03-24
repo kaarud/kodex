@@ -15,6 +15,51 @@ def test_load_annotated_variants_single_sheet(make_filtered_xlsx):
     assert variants[0]["HGVSc"] == "c.100C>T"
 
 
+from pathlib import Path
+
+
+def test_extract_sample_id():
+    from igv_capture import extract_sample_id
+    assert extract_sample_id(Path("TSC_063_345822_S2_filtered.xlsx")) == "345822_S2"
+    assert extract_sample_id(Path("TSC_063_346769_S1_filtered.xlsx")) == "346769_S1"
+
+
+def test_find_bams_all_present(tmp_path):
+    from igv_capture import find_bams
+    sid = "345822_S2"
+    for name in [f"{sid}.bam", f"{sid}.bam.bai",
+                 f"{sid}.mutect2.bam", f"{sid}.mutect2.bam.bai",
+                 f"{sid}.chim.bam", f"{sid}.chim.bam.bai"]:
+        (tmp_path / name).touch()
+    bams = find_bams(sid, tmp_path)
+    assert set(bams.keys()) == {"raw", "mutect2", "chim"}
+    assert bams["raw"]["bam"].name == f"{sid}.bam"
+    assert bams["raw"]["bai"].name == f"{sid}.bam.bai"
+
+
+def test_find_bams_bai_fallback(tmp_path):
+    """Accept {stem}.bai (primary) if {file}.bam.bai absent."""
+    from igv_capture import find_bams
+    sid = "345822_S2"
+    (tmp_path / f"{sid}.bam").touch()
+    (tmp_path / f"{sid}.bai").touch()          # .bai not .bam.bai — primary lookup
+    (tmp_path / f"{sid}.mutect2.bam").touch()
+    (tmp_path / f"{sid}.mutect2.bam.bai").touch()
+    (tmp_path / f"{sid}.chim.bam").touch()
+    (tmp_path / f"{sid}.chim.bam.bai").touch()
+    bams = find_bams(sid, tmp_path)
+    assert bams["raw"]["bai"].name == f"{sid}.bai"
+
+
+def test_find_bams_missing_returns_none(tmp_path):
+    from igv_capture import find_bams
+    sid = "345822_S2"
+    # Only raw BAM present, others missing
+    (tmp_path / f"{sid}.bam").touch()
+    (tmp_path / f"{sid}.bam.bai").touch()
+    assert find_bams(sid, tmp_path) is None
+
+
 def test_load_annotated_variants_dedup_across_sheets(make_filtered_xlsx):
     from igv_capture import load_annotated_variants
     same_row = {"SYMBOL": "TSC2", "HGVSc": "c.500A>G", "CHR": "chr16",
