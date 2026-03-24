@@ -1,0 +1,100 @@
+# vcf_filter config — PRELUDE-TSC
+# AF_PCT est en POURCENTAGE dans les XLSX NiourK (ex: 12.5 = 12.5 %)
+# MAX_AF_GNOMADEX2.1 est en FRACTION (ex: 0.005 = 0.5 %)
+
+genes: [TSC1, TSC2]
+
+exclusions:
+  gnomad_max_af: 0.005           # fraction — hard exclusion > 0.5 %
+  rncnt_max_total: 10            # cohorte globale
+  pjcnt_max_total: 4             # projet en cours (run TSC_063)
+  exclude_hom: true              # RNCNT_HOM > 0 → exclu
+  exclude_clinvar_benign: true
+
+  htz_to_mosaic_artifact:
+    enabled: true
+    min_htz_ratio: 0.80
+    min_htz_count: 3
+    af_max_pct: 35.0
+
+  mosaic_artifact:
+    enabled: true
+    rncnt_low_max: 5
+    af_max_pct: 35.0
+
+tiers:
+  clinvar_lovd:
+    enabled: true
+
+  high:
+    enabled: true
+    spliceai_threshold: 0.50
+
+  moderate:
+    enabled: true
+    gnomad_max_af: 0.001
+    revel_min: 0.75
+    cadd_min: 20
+
+  splicing:
+    enabled: true
+    spliceai_min: 0.20
+
+  mosaic:
+    enabled: true
+    af_min_pct: 5.0
+    af_max_pct: 35.0
+    rncnt_low_max: 5
+    rncnt_htz_max: 3
+
+output_columns:
+  - SYMBOL
+  - HGVSc
+  - HGVSp
+  - CHR
+  - POS
+  - REF
+  - ALT
+  - REF_TRANS
+  - REGIONS
+  - Feature
+  - AF_PCT
+  - DP
+  - SB
+  - CALLNB
+  - IMPACT
+  - Consequence
+  - REVEL
+  - CADD_PHRED
+  - SpliceAI_num
+  - SPiP_Interpretation
+  - SPiP_InterConfident
+  - SIFT
+  - PolyPhen
+  - GNOMAD3_AF
+  - GNOMADEX2.1_AF
+  - MAX_AF_GNOMADEX2.1
+  - RNCNT_TOTAL
+  - PJCNT_TOTAL
+  - RNCNT_LOW
+  - PJCNT_LOW
+  - RNCNT_HTZ
+  - PJCNT_HTZ
+  - RNCNT_HOM
+  - PJCNT_HOM
+  - CLINVAR
+  - LOVD
+  - Existing_variation
+  - PUBMED
+  - USER_CLASS
+  - USER_ANNOT
+  - USER_COM
+  - CALLAF_mutect2|strelka|gatkHC|deepvariant
+  - CALLAD_mutect2
+  - CALLAD_strelka
+  - CALLAD_gatkHC
+  - CALLAD_deepvariant
+  - CALLFILTER_mutect2
+  - CALLFILTER_strelka
+  - CALLFILTER_gatkHC
+  - CALLFILTER_deepvariant
