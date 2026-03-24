@@ -159,3 +159,50 @@ def test_normalize_chr():
     assert normalize_chr("chr9") == "chr9"
     assert normalize_chr("chrX") == "chrX"
     assert normalize_chr("X") == "chrX"
+
+
+def test_init_igv_sends_correct_commands(tmp_path):
+    from igv_capture import init_igv
+    sid = "345822_S2"
+    bams = {
+        "raw":    {"bam": tmp_path / f"{sid}.bam",    "bai": tmp_path / f"{sid}.bam.bai"},
+        "mutect2":{"bam": tmp_path / f"{sid}.mutect2.bam", "bai": tmp_path / f"{sid}.mutect2.bam.bai"},
+        "chim":   {"bam": tmp_path / f"{sid}.chim.bam",   "bai": tmp_path / f"{sid}.chim.bam.bai"},
+    }
+    calls = []
+    with patch("igv_capture.igv_cmd", side_effect=lambda p, c, **kw: calls.append((c, kw))):
+        init_igv(60151, bams)
+    commands = [c for c, _ in calls]
+    assert commands[0] == "new"
+    assert commands[1] == "genome"
+    assert commands.count("load") == 3
+
+
+def test_capture_variant_sequence(tmp_path):
+    from igv_capture import capture_variant
+    variant = {
+        "SYMBOL": "TSC1", "HGVSc": "c.100C>T",
+        "CHR": "chr9", "POS": 135786850, "REF": "C", "ALT": "T",
+        "DP": 100,
+    }
+    calls = []
+    with patch("igv_capture.igv_cmd", side_effect=lambda p, c, **kw: calls.append((c, kw))), \
+         patch("time.sleep"):
+        result = capture_variant(60151, variant, tmp_path / "out", delay=0)
+
+    commands = [c for c, _ in calls]
+    # Panel height set before goto
+    assert "maxPanelHeight" in commands
+    assert "goto" in commands
+    # Strand capture before soft clips
+    strand_idx = next(i for i,(c,kw) in enumerate(calls)
+                      if c == "setPreference" and kw.get("value") == "READ_STRAND")
+    softclip_idx = next(i for i,(c,kw) in enumerate(calls)
+                        if c == "setPreference" and kw.get("name") == "SAM.SHOW_SOFT_CLIPPED"
+                        and kw.get("value") == "true")
+    assert strand_idx < softclip_idx
+    # Exactly 2 snapshots taken
+    assert commands.count("snapshot") == 2
+    # Returns two PNG paths
+    assert result["strand"].suffix == ".png"
+    assert result["softclip"].suffix == ".png"

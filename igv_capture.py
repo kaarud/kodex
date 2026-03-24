@@ -110,6 +110,63 @@ def normalize_chr(chrom: str) -> str:
     return chrom
 
 
+_HALF_WINDOW = 145   # ±145 pb → 290 pb total
+
+
+def init_igv(port: int, bams: dict, genome: str = "hg38") -> None:
+    """Reset IGV session, load genome and 3 BAMs."""
+    igv_cmd(port, "new")
+    igv_cmd(port, "genome", name=genome)
+    labels = {"raw": "RAW", "mutect2": "MUTECT2", "chim": "CHIM"}
+    for key, paths in bams.items():
+        igv_cmd(port, "load",
+                file=str(paths["bam"].resolve()),
+                index=str(paths["bai"].resolve()),
+                name=labels[key])
+
+
+def capture_variant(
+    port: int,
+    variant: dict,
+    out_dir: Path,
+    delay: float = 2.0,
+) -> dict:
+    """Generate strand-bias and soft-clip screenshots for one variant."""
+    out_dir = Path(out_dir).expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    chrom = normalize_chr(str(variant.get("CHR", "")))
+    pos   = int(variant["POS"])
+    dp    = int(variant.get("DP") or 100)
+    name  = build_variant_name(variant)
+
+    panel_height = dp * 2 + 150
+    locus = f"{chrom}:{pos - _HALF_WINDOW}-{pos + _HALF_WINDOW}"
+
+    # Set display mode and panel height
+    igv_cmd(port, "setPreference", name="SAM.DISPLAY_MODE",   value="SQUISHED")
+    igv_cmd(port, "setPreference", name="SAM.SAMPLING_COUNT", value=str(dp))
+    igv_cmd(port, "maxPanelHeight", value=str(panel_height))
+    igv_cmd(port, "goto", locus=locus)
+    time.sleep(delay)
+
+    # Capture 1 — strand bias
+    strand_png = out_dir / f"{name}_strand.png"
+    igv_cmd(port, "setPreference", name="SAM.COLOR_BY", value="READ_STRAND")
+    igv_cmd(port, "snapshot", filename=str(strand_png))
+
+    # Capture 2 — soft clips (strand ALWAYS before soft clips — reset depends on this order)
+    softclip_png = out_dir / f"{name}_softclip.png"
+    igv_cmd(port, "setPreference", name="SAM.SHOW_SOFT_CLIPPED", value="true")
+    igv_cmd(port, "setPreference", name="SAM.COLOR_BY",          value="NO_COLORING")
+    igv_cmd(port, "snapshot", filename=str(softclip_png))
+
+    # Reset for next variant
+    igv_cmd(port, "setPreference", name="SAM.SHOW_SOFT_CLIPPED", value="false")
+
+    return {"strand": strand_png, "softclip": softclip_png}
+
+
 def find_bams(sample_id: str, bam_dir: Path) -> dict | None:
     """Locate the 3 BAMs + indices for a sample. Returns None if any missing."""
     specs = {
