@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "Si vous utilisez KODEX, merci de le citer comme suit."
+title: "KODEX — Plugin de post-traitement des variants NiourK pour la réanalyse NGS TSC1/TSC2"
+authors:
+  - family-names: Duraak
+    given-names: Axel
+    affiliation: "CHU Angers — Département de Génétique Médicale"
+version: 1.0.0
+date-released: 2026-03-27
+license: GPL-3.0
+repository-code: "https://github.com/axelduraak/kodex"
+abstract: >
+  KODEX est un plugin de post-traitement pour les fichiers XLSX produits par le pipeline
+  NiourK (CHU Angers). Il filtre, score et met en forme les variants TSC1/TSC2 pour la
+  revue clinique, dans le cadre de la réanalyse NGS de la cohorte PRELUDE-TSC.
+keywords:
+  - NGS
+  - TSC1
+  - TSC2
+  - variant filtering
+  - clinical genomics
+  - NiourK
+  - KODEX
