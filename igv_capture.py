@@ -1,10 +1,12 @@
 """igv_capture.py — Generate IGV screenshots for annotated TSC1/TSC2 variants."""
 
 import argparse
+import socket
 import time
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 import requests
 
@@ -13,8 +15,28 @@ _ANNOTATION_COLS = ["USER_CLASS", "USER_ANNOT", "USER_COM"]
 _DEDUP_KEY = ["CHR", "POS", "REF", "ALT"]
 
 
-def load_annotated_variants(xlsx_path: Path) -> list[dict]:
-    """Read all data sheets (skip _summary), return annotated variants deduplicated."""
+def _matches_exclusion(variant: dict, terms: list[str]) -> bool:
+    """Return True if any annotation column contains an exclusion term (case-insensitive)."""
+    for col in _ANNOTATION_COLS:
+        val = str(variant.get(col, "") or "").strip()
+        if not val or val in ("nan", "None") or val.startswith("="):
+            continue
+        val_lower = val.lower()
+        for term in terms:
+            if term.lower() in val_lower:
+                return True
+    return False
+
+
+def load_annotated_variants(
+    xlsx_path: Path,
+    exclusion_terms: list[str] | None = None,
+) -> list[dict]:
+    """Read all data sheets (skip _summary), return annotated variants deduplicated.
+
+    If exclusion_terms is provided, rows whose USER_CLASS / USER_ANNOT / USER_COM
+    contain any of the terms are excluded (case-insensitive substring match).
+    """
     xl = pd.ExcelFile(xlsx_path, engine="openpyxl")
     sheets = [s for s in xl.sheet_names if s != "_summary"]
 
@@ -22,10 +44,12 @@ def load_annotated_variants(xlsx_path: Path) -> list[dict]:
     for sheet in sheets:
         df = xl.parse(sheet)
         # Keep only rows with at least one annotation field non-empty
+        # Ignore formula cells (start with "=") — these are cross-sheet references
         mask = pd.Series(False, index=df.index)
         for col in _ANNOTATION_COLS:
             if col in df.columns:
-                mask |= df[col].notna() & (df[col].astype(str).str.strip() != "")
+                vals = df[col].astype(str).str.strip()
+                mask |= df[col].notna() & (vals != "") & (~vals.str.startswith("="))
         frames.append(df[mask])
 
     if not frames:
@@ -38,7 +62,17 @@ def load_annotated_variants(xlsx_path: Path) -> list[dict]:
     if available_key:
         combined = combined.drop_duplicates(subset=available_key)
 
-    return combined.to_dict(orient="records")
+    variants = combined.to_dict(orient="records")
+
+    # Apply exclusion terms
+    if exclusion_terms:
+        before = len(variants)
+        variants = [v for v in variants if not _matches_exclusion(v, exclusion_terms)]
+        excluded = before - len(variants)
+        if excluded:
+            print(f"  [{excluded} variant(s) exclu(s) par termes IGV : {', '.join(exclusion_terms)}]")
+
+    return variants
 
 
 def extract_sample_id(xlsx_path: Path) -> str:
@@ -72,10 +106,88 @@ def check_igv(port: int) -> bool:
         return False
 
 
+def _build_cmd_str(command: str, **params) -> str:
+    """Convert (command, **kwargs) to an IGV raw socket command string.
+
+    IGV batch command format:
+      new                              → "new"
+      genome hg38                      → "genome hg38"
+      goto chr9:100-200                → "goto chr9:100-200"
+      setPreference SAM.COLOR_BY STRAND → "setPreference SAM.COLOR_BY STRAND"
+      maxPanelHeight 350               → "maxPanelHeight 350"
+      load /f.bam index=/f.bai name=X → "load /f.bam index=/f.bai name=X"
+    """
+    if not params:
+        return command
+    if command == "load":
+        file_path = params.get("file", "")
+        rest = " ".join(f"{k}={v}" for k, v in params.items() if k != "file")
+        return f"load {file_path} {rest}".strip()
+    if command == "setPreference":
+        return f"setPreference {params['name']} {params['value']}"
+    # Generic single-value commands: goto, genome, maxPanelHeight …
+    val = next(iter(params.values()))
+    return f"{command} {val}"
+
+
 def igv_cmd(port: int, command: str, **params) -> str:
-    """Send a single command to IGV HTTP API. Returns response text."""
-    r = requests.get(f"http://localhost:{port}/{command}", params=params, timeout=10)
-    return r.text
+    """Send a single command to IGV via raw TCP socket.
+
+    IGV 2.19.x (API v3.0): only a small subset of commands work as HTTP GET
+    (/goto, /load). All others (new, genome, setPreference, maxPanelHeight …)
+    are batch-only and must be sent as plain text over the raw socket.
+    """
+    cmd_str = _build_cmd_str(command, **params)
+    try:
+        with socket.create_connection(("localhost", port), timeout=10) as sock:
+            sock.sendall((cmd_str + "\n").encode())
+            sock.settimeout(5)
+            resp = b""
+            try:
+                while True:
+                    chunk = sock.recv(1024)
+                    if not chunk:
+                        break
+                    resp += chunk
+            except socket.timeout:
+                pass
+            text = resp.decode("utf-8", errors="replace").strip()
+            if text.upper().startswith("ERROR"):
+                print(f"[WARN] IGV: {command} → {text}")
+            return text
+    except OSError as e:
+        print(f"[ERREUR] IGV command '{command}' failed: {e}")
+        raise
+
+
+def igv_batch(port: int, lines: list[str]) -> None:
+    """Send batch commands to IGV via raw TCP socket (one connection per command).
+
+    IGV 2.19.x (HTTP API v3.0): snapshot/snapshotDirectory/setPreference are not
+    reachable via HTTP GET. IGV's "HTTP server" is actually a raw TCP socket server
+    that reads the first line as a command. POST requests cause a BadStatusLine error.
+    Sending raw text (no HTTP headers) works for all batch commands.
+    """
+    for cmd in lines:
+        try:
+            with socket.create_connection(("localhost", port), timeout=10) as sock:
+                sock.sendall((cmd + "\n").encode())
+                sock.settimeout(5)
+                resp = b""
+                try:
+                    while True:
+                        chunk = sock.recv(1024)
+                        if not chunk:
+                            break
+                        resp += chunk
+                except socket.timeout:
+                    pass
+                text = resp.decode("utf-8", errors="replace").strip()
+                if text.upper().startswith("ERROR"):
+                    print(f"[WARN] IGV: {cmd} → {text}")
+        except OSError as e:
+            print(f"[ERREUR] IGV socket '{cmd}' failed: {e}")
+            raise
 
 
 def sanitize_filename(s: str) -> str:
@@ -131,7 +243,11 @@ def capture_variant(
     out_dir: Path,
     delay: float = 2.0,
 ) -> dict:
-    """Generate strand-bias and soft-clip screenshots for one variant."""
+    """Generate 3 screenshots per variant (strand, softclip, squished).
+
+    IGV 2.19.x (API v3.0): navigation/preference commands via GET,
+    snapshot commands via POST /batch.
+    """
     out_dir = Path(out_dir).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -143,28 +259,35 @@ def capture_variant(
     panel_height = dp * 2 + 150
     locus = f"{chrom}:{pos - _HALF_WINDOW}-{pos + _HALF_WINDOW}"
 
-    # Set display mode and panel height
+    strand_fname   = f"{name}_strand.png"
+    softclip_fname = f"{name}_softclip.png"
+    squished_fname = f"{name}_squished.png"
+
+    # Navigate and set display via GET endpoints
     igv_cmd(port, "setPreference", name="SAM.DISPLAY_MODE",   value="SQUISHED")
     igv_cmd(port, "setPreference", name="SAM.SAMPLING_COUNT", value=str(dp))
     igv_cmd(port, "maxPanelHeight", value=str(panel_height))
     igv_cmd(port, "goto", locus=locus)
     time.sleep(delay)
 
-    # Capture 1 — strand bias
-    strand_png = out_dir / f"{name}_strand.png"
-    igv_cmd(port, "setPreference", name="SAM.COLOR_BY", value="READ_STRAND")
-    igv_cmd(port, "snapshot", filename=str(strand_png))
+    # All 3 captures in a single batch script (POST /batch)
+    # strand ALWAYS before soft clips — reset order matters
+    igv_batch(port, [
+        f"snapshotDirectory {out_dir}",
+        "setPreference SAM.COLOR_BY READ_STRAND",
+        f"snapshot {strand_fname}",
+        "setPreference SAM.SHOW_SOFT_CLIPPED true",
+        "setPreference SAM.COLOR_BY NO_COLORING",
+        f"snapshot {softclip_fname}",
+        "setPreference SAM.SHOW_SOFT_CLIPPED false",
+        f"snapshot {squished_fname}",
+    ])
 
-    # Capture 2 — soft clips (strand ALWAYS before soft clips — reset depends on this order)
-    softclip_png = out_dir / f"{name}_softclip.png"
-    igv_cmd(port, "setPreference", name="SAM.SHOW_SOFT_CLIPPED", value="true")
-    igv_cmd(port, "setPreference", name="SAM.COLOR_BY",          value="NO_COLORING")
-    igv_cmd(port, "snapshot", filename=str(softclip_png))
-
-    # Reset for next variant
-    igv_cmd(port, "setPreference", name="SAM.SHOW_SOFT_CLIPPED", value="false")
-
-    return {"strand": strand_png, "softclip": softclip_png}
+    return {
+        "strand":   out_dir / strand_fname,
+        "softclip": out_dir / softclip_fname,
+        "squished": out_dir / squished_fname,
+    }
 
 
 def find_bams(sample_id: str, bam_dir: Path) -> dict | None:
@@ -199,14 +322,23 @@ def main(argv=None):
                         default=Path("~/data/TSC_063/igv_captures").expanduser())
     parser.add_argument("--delay",   type=float, default=2.0)
     parser.add_argument("--genome",  type=str,   default="hg38")
+    parser.add_argument("--config",  type=Path,
+                        default=Path(__file__).parent / "config.yaml")
     args = parser.parse_args(argv)
 
     xlsx_path = args.xlsx.expanduser().resolve()
     bam_dir   = args.bam_dir.expanduser().resolve()
     out_dir   = args.out.expanduser().resolve()
 
+    # Load exclusion terms from config
+    exclusion_terms = []
+    if args.config.exists():
+        with open(args.config) as f:
+            cfg = yaml.safe_load(f) or {}
+        exclusion_terms = cfg.get("igv_exclusion_terms", [])
+
     # 1. Charger les variants annotés
-    variants = load_annotated_variants(xlsx_path)
+    variants = load_annotated_variants(xlsx_path, exclusion_terms=exclusion_terms)
     if not variants:
         print("Aucun variant annoté trouvé (USER_CLASS / USER_ANNOT / USER_COM vides).")
         raise SystemExit(0)
@@ -242,6 +374,7 @@ def main(argv=None):
         result = capture_variant(args.port, variant, sample_out, delay=args.delay)
         print(f"    → {result['strand'].name}")
         print(f"    → {result['softclip'].name}")
+        print(f"    → {result['squished'].name}")
 
     print(f"\nCaptures terminées → {sample_out}")
 

@@ -6,74 +6,212 @@ genes: [TSC1, TSC2]
 
 exclusions:
   gnomad_max_af: 0.005           # fraction — hard exclusion > 0.5 %
-  rncnt_max_total: 10            # cohorte globale
-  pjcnt_max_total: 4             # projet en cours (run TSC_063)
+  rncnt_max_total: 6             # run actuel (22 échantillons TSC_063) — > 6 = exclu
+  pjcnt_max_total: 10            # méta-analyse 30 runs pipeline — > 10 = exclu
   exclude_hom: true              # RNCNT_HOM > 0 → exclu
   exclude_clinvar_benign: true
 
-  htz_to_mosaic_artifact:
-    enabled: true
-    min_htz_ratio: 0.80
-    min_htz_count: 3
-    af_max_pct: 35.0
-
   mosaic_artifact:
     enabled: true
-    rncnt_low_max: 5
+    rncnt_low_max: 6
     af_max_pct: 35.0
 
-tiers:
-  clinvar_lovd:
+# Signalement visuel des discordances AF/run (rouge sur HGVSc, jamais d'exclusion)
+af_discordance:
+  htz_recurrent_in_mosaic:
+    enabled: true
+    min_rncnt_htz: 3       # ≥ 3 autres samples HTZ dans le run → pattern HTZ habituel
+    mosaic_af_max: 35.0    # AF < 35 % ici = mosaïque
+  mosaic_recurrent_in_htz:
+    enabled: true
+    min_rncnt_low: 3       # ≥ 3 autres samples mosaïques dans le run
+    htz_af_min: 35.0       # AF 35–65 % ici = hétérozygote
+    htz_af_max: 65.0
+
+sheets:
+  high_impact:
     enabled: true
 
-  high:
+  clinvar_p_lp:
     enabled: true
-    spliceai_threshold: 0.50
 
-  moderate:
+  clinvar_conflicting:
+    enabled: true
+
+  clinvar_vus:
+    enabled: true
+
+  clinvar_not_provided:
+    enabled: true
+
+  fq_moderate:
+    enabled: true
+    gnomad_max_af: 0.001          # fraction — < 0.1 %
+
+  fq_low:
     enabled: true
     gnomad_max_af: 0.001
-    revel_min: 0.75
-    cadd_min: 20
 
-  splicing:
+  fq_modifier:
     enabled: true
-    spliceai_min: 0.20
+    gnomad_max_af: 0.001
+    spliceai_threshold: 0.50
+    # SPiP_Interpretation == "Altered" (OR avec spliceAI)
+
+  four_callers:
+    enabled: true
+    min_callers: 4
+
+  lovd:
+    enabled: true
 
   mosaic:
     enabled: true
     af_min_pct: 5.0
-    af_max_pct: 35.0
-    rncnt_low_max: 5
-    rncnt_htz_max: 3
+    af_max_pct: 35.0           # > 35% = hétérozygote germinal probable
+    rncnt_max_total: 2
 
+  extra_genes: [RHEB, PKD1]   # feuille fourre-tout — tous variants, pas de filtre qualité
+
+  deep_mosaic:
+    enabled: true
+    af_min_pct: 0.5            # > 0.5 % (bruit de fond NGS panel ~0.1-0.3 %)
+    af_max_pct: 5.0            # ≤ 5 % (au-dessus = onglet MOSAIC)
+    rncnt_max_total: 2         # novel ou très rare
+    min_dp: 200                # couverture minimale pour que 1% soit interprétable
+    sb_exclude_extremes: true  # SB=0 ou SB=1 = biais total de brin → exclu
+
+# ---------------------------------------------------------------------------
+# Scoring variant — couleur RGB sur la cellule Import DefGen
+#
+# La couleur est encodée sur 3 canaux indépendants (0–255 chacun) :
+#
+#   R (Rouge)  = risque artefact   = 1 − qualité_technique
+#                Critères : SB (strand bias), CALLNB (nb callers), DP/AF cohérence
+#                → R élevé = séquençage douteux
+#
+#   G (Vert)   = signal biologique = score_biologie
+#                Critères : ClinVar, IMPACT, CADD, REVEL, SpliceAI
+#                → G élevé = variant biologiquement pertinent
+#
+#   B (Bleu)   = rareté            = score_rareté
+#                Critères : RNCNT, PJCNT, gnomAD, LOVD
+#                → B élevé = variant rare / novel
+#
+# Signatures visuelles clés :
+#   Cyan   #00FFFF  (R=0,  G=255, B=255) : candidat idéal — bio + rare + séquençage propre
+#   Vert   #00FF00  (R=0,  G=255, B=0  ) : bio forte mais non rare (récurrent ou artefact panel)
+#   Jaune  #FFFF00  (R=255,G=255, B=0  ) : faux-positif dangereux — bio + artefact technique
+#   Rouge  #FF0000  (R=255,G=0,   B=0  ) : artefact pur — rien d'intéressant
+#   Noir   #000000  (R=0,  G=0,   B=0  ) : sans intérêt biologiquement, mais séquençage propre
+#
+# Règle spéciale gnomAD :
+#   Si gnomAD absent MAIS PJCNT ≥ gnomad_pjcnt_benign_threshold (défaut 10) :
+#   → contribution gnomAD annulée (artefact panel probable, pas un variant rare)
+#
+# Chaque critère a un poids (weight) et des seuils ajustables.
+# Pour désactiver un critère : mettre weight à 0.
+# Les valeurs ci-dessous sont les défauts — ne lister que ce qu'on veut changer.
+# ---------------------------------------------------------------------------
+scoring:
+  enabled: true
+
+  verdicts:
+    high:     { threshold: 0.7, label: "Variant solide, à valider" }
+    mixed:    { threshold: 0.5, label: "À évaluer — signaux mixtes" }
+    low:      { threshold: 0.3, label: "Probablement artefact ou inintéressant" }
+    artifact: { threshold: 0.0, label: "Artefact probable" }
+
+  technical:
+    sb:
+      weight: 2.0               # poids du strand bias dans le score
+      good_min: 0.3             # SB entre good_min et good_max = score max
+      good_max: 0.7
+      warn_min: 0.2             # zone intermédiaire
+      warn_max: 0.8
+    callnb:
+      weight: 2.0
+      excellent: 4              # 4 callers = score max
+      good: 3
+      moderate: 2
+    dp_af:
+      weight: 0.5
+      min_alt_reads: 5          # nb min de reads alternatifs attendus
+
+  biological:
+    clinvar:
+      weight: 2.5
+      pathogenic: 1.0           # fraction du poids attribuée si Pathogenic
+      conflicting: 0.4
+      vus: 0.6
+      benign: 0.0
+      absent: 0.4
+      other: 0.2
+    impact:
+      weight: 2.0
+      HIGH: 1.0
+      MODERATE: 0.75
+      LOW: 0.25
+      MODIFIER: 0.0
+    cadd:
+      weight: 1.0
+      good: 30                  # CADD ≥ 30 = score max
+      moderate: 20
+    revel:
+      weight: 1.0
+      good: 0.75
+      moderate: 0.5
+    spliceai:
+      weight: 1.0
+      good: 0.8
+      moderate: 0.5
+
+  rarity:                        # axe rareté → canal B (bleu) de la couleur RGB
+    rncnt:
+      weight: 1.5
+      good_max: 1               # 0 ou 1 = patient unique dans la base (NiourK compte le patient lui-même)
+      moderate_max: 3
+      warn_max: 5
+    pjcnt:
+      weight: 1.0
+      good_max: 0
+      moderate_max: 5
+    gnomad:
+      weight: 1.5
+      ultra_rare: 0.0001        # < 0.01%
+      rare: 0.001               # < 0.1%
+    lovd:
+      weight: 0.5
+
+igv_exclusion_terms:
+  - "SB"                    # Biais de brin (USER_CLASS)
+  - "ReMM low"              # Score ReMM faible (USER_ANNOT / USER_COM)
+  - "Fréquence"             # Trop fréquent dans la population ou dans les projets et runs
+  - "freq"
+  - "fréq"
 output_columns:
+  # --- Identifiant & localisation ---
+  - Import DefGen
   - SYMBOL
-  - HGVSc
-  - HGVSp
-  - CHR
-  - POS
-  - REF
-  - ALT
   - REF_TRANS
   - REGIONS
-  - Feature
+  - HGVSc
+  - HGVSp
+  # --- Données échantillon ---
   - AF_PCT
   - DP
   - SB
+  # --- Annotations utilisateur ---
+  - USER_CLASS
+  - USER_ANNOT
+  - USER_COM
+  # --- Callers ---
   - CALLNB
+  # --- Impact fonctionnel ---
   - IMPACT
   - Consequence
-  - REVEL
-  - CADD_PHRED
-  - SpliceAI_num
-  - SPiP_Interpretation
-  - SPiP_InterConfident
-  - SIFT
-  - PolyPhen
-  - GNOMAD3_AF
-  - GNOMADEX2.1_AF
-  - MAX_AF_GNOMADEX2.1
+  - CLINVAR
+  # --- Compteurs réseau ---
   - RNCNT_TOTAL
   - PJCNT_TOTAL
   - RNCNT_LOW
@@ -82,14 +220,32 @@ output_columns:
   - PJCNT_HTZ
   - RNCNT_HOM
   - PJCNT_HOM
-  - CLINVAR
+  # --- Bases de données ---
   - LOVD
+  # --- Fréquences populationnelles ---
+  - GNOMAD3_AF
+  - GNOMADEX2.1_AF
+  - MAX_AF_GNOMADEX2.1
+  # --- Scores prédictifs ---
+  - SPiP_Interpretation
+  - SPiP_InterConfident
+  - SpliceAI
+  - SpliceAI_num
+  - CADD_PHRED
+  - REVEL
+  - SIFT
+  - PolyPhen
+  # --- Références ---
   - Existing_variation
   - PUBMED
-  - USER_CLASS
-  - USER_ANNOT
-  - USER_COM
-  - CALLAF_mutect2|strelka|gatkHC|deepvariant
+  # --- Coordonnées génomiques ---
+  - CHR
+  - POS
+  - REF
+  - ALT
+  - Feature
+  # --- Détail callers ---
+  - "CALLAF_mutect2|strelka|gatkHC|deepvariant"
   - CALLAD_mutect2
   - CALLAD_strelka
   - CALLAD_gatkHC
@@ -98,3 +254,20 @@ output_columns:
   - CALLFILTER_strelka
   - CALLFILTER_gatkHC
   - CALLFILTER_deepvariant
+  # --- gnomAD populations ---
+  - GNOMAD3_AF_nfe
+  - GNOMADEX2.1_NFE_AF
+  - GNOMAD3_AF_afr
+  - GNOMADEX2.1_AFR_AF
+  - GNOMAD3_AF_eas
+  - GNOMADEX2.1_EAS_AF
+  - GNOMAD3_AF_sas
+  - GNOMADEX2.1_SAS_AF
+  - GNOMAD3_AF_mid
+  - GNOMAD3_AF_amr
+  - GNOMADEX2.1_AMR_AF
+  - GNOMAD3_AF_oth
+  - GNOMADEX2.1_OTH_AF
+  - GNOMAD3_AF_fin
+  - GNOMADEX2.1_FIN_AF
+  - GNOMADEX2.1_ASJ_AF

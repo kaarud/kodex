@@ -112,26 +112,31 @@ def test_check_igv_unreachable():
         assert check_igv(60151) is False
 
 
-def test_igv_cmd_builds_correct_url():
-    from igv_capture import igv_cmd
-    with patch("requests.get", return_value=_mock_get()) as mock_get:
-        igv_cmd(60151, "goto", locus="chr9:100-200")
-        mock_get.assert_called_once_with(
-            "http://localhost:60151/goto",
-            params={"locus": "chr9:100-200"},
-            timeout=10,
-        )
+def test_igv_cmd_build_goto():
+    from igv_capture import _build_cmd_str
+    assert _build_cmd_str("goto", locus="chr9:100-200") == "goto chr9:100-200"
 
 
-def test_igv_cmd_setPreference():
-    from igv_capture import igv_cmd
-    with patch("requests.get", return_value=_mock_get()) as mock_get:
-        igv_cmd(60151, "setPreference", name="SAM.COLOR_BY", value="READ_STRAND")
-        mock_get.assert_called_once_with(
-            "http://localhost:60151/setPreference",
-            params={"name": "SAM.COLOR_BY", "value": "READ_STRAND"},
-            timeout=10,
-        )
+def test_igv_cmd_build_setpreference():
+    from igv_capture import _build_cmd_str
+    assert _build_cmd_str("setPreference", name="SAM.COLOR_BY", value="READ_STRAND") \
+        == "setPreference SAM.COLOR_BY READ_STRAND"
+
+
+def test_igv_cmd_build_load():
+    from igv_capture import _build_cmd_str
+    result = _build_cmd_str("load", file="/data/s.bam", index="/data/s.bai", name="RAW")
+    assert result == "load /data/s.bam index=/data/s.bai name=RAW"
+
+
+def test_igv_cmd_build_genome():
+    from igv_capture import _build_cmd_str
+    assert _build_cmd_str("genome", name="hg38") == "genome hg38"
+
+
+def test_igv_cmd_build_no_params():
+    from igv_capture import _build_cmd_str
+    assert _build_cmd_str("new") == "new"
 
 
 def test_sanitize_filename_special_chars():
@@ -229,6 +234,67 @@ def test_main_bams_missing(make_filtered_xlsx, tmp_path, capsys):
     assert exc.value.code == 1
 
 
+def test_load_annotated_variants_ignores_formulas(make_filtered_xlsx):
+    """Rows where the only non-empty USER_* field is a formula (=...) are skipped."""
+    from igv_capture import load_annotated_variants
+    path = make_filtered_xlsx({
+        "HIGH_IMPACT": [
+            # Real annotation → loaded
+            {"SYMBOL": "TSC1", "HGVSc": "c.100C>T", "CHR": "chr9",
+             "POS": 135786850, "REF": "C", "ALT": "T", "DP": 120,
+             "USER_CLASS": "5", "USER_ANNOT": None, "USER_COM": None},
+            # Formula-only in USER_COM → should be ignored
+            {"SYMBOL": "TSC2", "HGVSc": "c.300T>C", "CHR": "chr16",
+             "POS": 2000000, "REF": "T", "ALT": "C", "DP": 100,
+             "USER_CLASS": None, "USER_ANNOT": None,
+             "USER_COM": '=TEXTJOIN(" | ",TRUE,"HIGH_IMPACT: 5 patho")'},
+        ]
+    })
+    variants = load_annotated_variants(path)
+    assert len(variants) == 1
+    assert variants[0]["HGVSc"] == "c.100C>T"
+
+
+def test_load_annotated_variants_exclusion_terms(make_filtered_xlsx):
+    """Variants with exclusion terms in USER_CLASS/USER_ANNOT/USER_COM are filtered out."""
+    from igv_capture import load_annotated_variants
+    path = make_filtered_xlsx({
+        "HIGH_IMPACT": [
+            {"SYMBOL": "TSC1", "HGVSc": "c.100C>T", "CHR": "chr9",
+             "POS": 135786850, "REF": "C", "ALT": "T", "DP": 120,
+             "USER_CLASS": "SB", "USER_ANNOT": None, "USER_COM": None},
+            {"SYMBOL": "TSC1", "HGVSc": "c.200G>A", "CHR": "chr9",
+             "POS": 135786900, "REF": "G", "ALT": "A", "DP": 80,
+             "USER_CLASS": "5", "USER_ANNOT": "ReMM low", "USER_COM": None},
+            {"SYMBOL": "TSC2", "HGVSc": "c.300T>C", "CHR": "chr16",
+             "POS": 2000000, "REF": "T", "ALT": "C", "DP": 100,
+             "USER_CLASS": "4", "USER_ANNOT": None, "USER_COM": "à revoir"},
+        ]
+    })
+    # Without exclusion terms: all 3 annotated variants
+    variants = load_annotated_variants(path)
+    assert len(variants) == 3
+
+    # With exclusion terms: SB and ReMM low excluded, 1 remaining
+    variants = load_annotated_variants(path, exclusion_terms=["SB", "ReMM low"])
+    assert len(variants) == 1
+    assert variants[0]["HGVSc"] == "c.300T>C"
+
+
+def test_load_annotated_variants_exclusion_case_insensitive(make_filtered_xlsx):
+    """Exclusion terms match case-insensitively."""
+    from igv_capture import load_annotated_variants
+    path = make_filtered_xlsx({
+        "HIGH_IMPACT": [
+            {"SYMBOL": "TSC1", "HGVSc": "c.100C>T", "CHR": "chr9",
+             "POS": 135786850, "REF": "C", "ALT": "T", "DP": 120,
+             "USER_CLASS": None, "USER_ANNOT": None, "USER_COM": "remm low score"},
+        ]
+    })
+    variants = load_annotated_variants(path, exclusion_terms=["ReMM low"])
+    assert len(variants) == 0
+
+
 def test_capture_variant_sequence(tmp_path):
     from igv_capture import capture_variant
     variant = {
@@ -236,24 +302,26 @@ def test_capture_variant_sequence(tmp_path):
         "CHR": "chr9", "POS": 135786850, "REF": "C", "ALT": "T",
         "DP": 100,
     }
-    calls = []
-    with patch("igv_capture.igv_cmd", side_effect=lambda p, c, **kw: calls.append((c, kw))), \
+    get_calls = []
+    batch_calls = []
+    with patch("igv_capture.igv_cmd", side_effect=lambda p, c, **kw: get_calls.append((c, kw))), \
+         patch("igv_capture.igv_batch", side_effect=lambda p, lines: batch_calls.extend(lines)), \
          patch("time.sleep"):
         result = capture_variant(60151, variant, tmp_path / "out", delay=0)
 
-    commands = [c for c, _ in calls]
+    get_commands = [c for c, _ in get_calls]
     # Panel height set before goto
-    assert "maxPanelHeight" in commands
-    assert "goto" in commands
-    # Strand capture before soft clips
-    strand_idx = next(i for i,(c,kw) in enumerate(calls)
-                      if c == "setPreference" and kw.get("value") == "READ_STRAND")
-    softclip_idx = next(i for i,(c,kw) in enumerate(calls)
-                        if c == "setPreference" and kw.get("name") == "SAM.SHOW_SOFT_CLIPPED"
-                        and kw.get("value") == "true")
+    assert "maxPanelHeight" in get_commands
+    assert "goto" in get_commands
+    # Strand capture before soft clips (in batch lines)
+    strand_idx = next(i for i, line in enumerate(batch_calls)
+                      if "READ_STRAND" in line)
+    softclip_idx = next(i for i, line in enumerate(batch_calls)
+                        if "SAM.SHOW_SOFT_CLIPPED" in line and "true" in line)
     assert strand_idx < softclip_idx
-    # Exactly 2 snapshots taken
-    assert commands.count("snapshot") == 2
-    # Returns two PNG paths
+    # Exactly 3 snapshot commands in batch
+    assert sum(1 for line in batch_calls if line.startswith("snapshot ")) == 3
+    # Returns three PNG paths
     assert result["strand"].suffix == ".png"
     assert result["softclip"].suffix == ".png"
+    assert result["squished"].suffix == ".png"

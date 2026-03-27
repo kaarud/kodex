@@ -1,0 +1,10 @@
+name: ngs_reanalysis
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pandas>=2.0
+  - openpyxl>=3.1
+  - pyyaml>=6.0
+  - requests>=2.28
+  - pytest>=7.0
