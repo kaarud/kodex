@@ -1,0 +1,40 @@
+# ── Données patients / données cliniques ───────────────────────────────────
+# NE JAMAIS committer de données NiourK ou de résultats d'analyse
+*.xlsx
+*.vcf
+*.vcf.gz
+*.bam
+*.bam.bai
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+data/
+
+# ── Environnements Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# ── macOS ───────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Éditeurs ────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Claude Code ─────────────────────────────────────────────────────────────
+.claude/
+
+# ── Fichiers internes ───────────────────────────────────────────────────────
+# Ne contient pas de données sensibles mais pas utile sur GitHub
+BRIEFING_NGS_REANALYSIS.md
+todo_TSC_063.md
