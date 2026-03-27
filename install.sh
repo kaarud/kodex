@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# install.sh — Installation du pipeline NGS Reanalysis sur serveur Ubuntu
+# install.sh — Installation de KODEX sur serveur Ubuntu
 # Usage: bash install.sh [--prefix /chemin/micromamba]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_NAME="ngs_reanalysis"
+ENV_NAME="kodex"
 MAMBA_PREFIX="${1:-$HOME/micromamba}"
 
 # ---------------------------------------------------------------

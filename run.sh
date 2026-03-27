@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# run.sh — Lance le pipeline de filtrage sur un fichier NiourK XLSX
+# run.sh — Lance KODEX sur un fichier NiourK XLSX
 # Usage: bash run.sh <fichier.xlsx> [--beta]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_NAME="ngs_reanalysis"
+ENV_NAME="kodex"
 
 if [ $# -lt 1 ]; then
     echo "Usage: bash $0 <fichier_niourk.xlsx> [--beta]"

@@ -1,4 +1,4 @@
-# vcf_filter config — PRELUDE-TSC
+# KODEX config — PRELUDE-TSC
 # AF_PCT est en POURCENTAGE dans les XLSX NiourK (ex: 12.5 = 12.5 %)
 # MAX_AF_GNOMADEX2.1 est en FRACTION (ex: 0.005 = 0.5 %)
 

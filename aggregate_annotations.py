@@ -1,4 +1,4 @@
-"""aggregate_annotations.py — Agrège tous les variants annotés de tous les *_filtered.xlsx."""
+"""aggregate_annotations.py — KODEX : agrège les variants annotés de tous les *_filtered.xlsx."""
 
 import argparse
 import sys
@@ -166,7 +166,7 @@ def _write_summary(df: pd.DataFrame, output_path: Path) -> None:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Agrège les variants annotés (USER_CLASS/ANNOT/COM) de tous les *_filtered.xlsx."
+        description="KODEX — Agrège les variants annotés (USER_CLASS/ANNOT/COM) de tous les *_filtered.xlsx."
     )
     parser.add_argument(
         "targets", type=Path, nargs="*",
