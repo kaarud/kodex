@@ -1,9 +1,7 @@
 # KODEX
 
-**KODEX** est un plugin de post-traitement des variants NiourK pour la réanalyse NGS TSC1/TSC2.
-Il déchiffre les fichiers XLSX produits par le pipeline NiourK (CHU Angers) et génère des tableaux filtrés, annotés et prêts pour la revue clinique.
-
-> Nom : dans la lignée des outils CHU Angers (Koala, NiourK, KaveShare), KODEX évoque la lecture et le déchiffrement des signes génomiques (*augur* + *codex*).
+**KODEX** est un plugin de post-traitement des variants générés par la pipeline angevine NiourK pour la réanalyse NGS TSC1/TSC2.
+Il déchiffre les fichiers XLSX produits par le pipeline NiourK (CHU Angers) et génère des tableaux filtrés, annotés et prêts pour la revue clinique. En somme il permet de passer d'un fichier contenants des millers de variants à plusieurs feuilles dans un classeur excel contenant une dizaine de variants.
 
 ---
 
@@ -134,8 +132,7 @@ docs/                    — documentation détaillée
 
 ## Contexte
 
-KODEX est développé dans le cadre de la réanalyse NGS de la cohorte **PRELUDE-TSC** (CHU Angers).
-Il traite les sorties du pipeline **NiourK v2.5** (KAVE - CHU Angers, Nextflow) sur le run **TSC_063** (22 échantillons, Illumina NextSeq, panel Twist TSC, GRCh38).
+
 
 ---
 
