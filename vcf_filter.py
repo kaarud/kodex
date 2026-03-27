@@ -1,4 +1,4 @@
-"""vcf_filter.py — Filter NiourK XLSX for TSC1/TSC2 pathogenic candidates."""
+"""vcf_filter.py — KODEX : déchiffre les variants NiourK (TSC1/TSC2)."""
 
 import argparse
 import hashlib
@@ -918,7 +918,7 @@ def _apply_variant_scores(ws, scoring: dict | None = None) -> None:
         # Apply gradient fill to Import DefGen cell
         defgen_cell = ws.cell(row=row[0].row, column=defgen_col)
         defgen_cell.fill = PatternFill("solid", fgColor=rgb)
-        c = Comment(comment_text, "vcf_filter")
+        c = Comment(comment_text, "KODEX")
         c.width = 450
         line_count = comment_text.count("\n") + 1
         c.height = max(300, line_count * 20)
@@ -1005,7 +1005,7 @@ def _mark_duplicate_hgvsc(ws, hgvsc_map: dict[str, dict[str, list[int]]]) -> Non
             full_text = existing.text + "\n" + dup_text
         else:
             full_text = dup_text
-        row[0].comment = Comment(full_text, "vcf_filter")
+        row[0].comment = Comment(full_text, "KODEX")
 
 
 def _inject_usercom_formulas(
@@ -1135,7 +1135,7 @@ def _mark_downstream_neighbor(ws) -> None:
             cell.fill = _BLUE_FILL
             cell.font = _BLUE_FONT
             if not cell.comment:
-                cell.comment = Comment(f"Position dans {gene}", "vcf_filter")
+                cell.comment = Comment(f"Position dans {gene}", "KODEX")
 
 
 def _mark_hgvsc_in_extra_sheet(ws) -> None:
@@ -1242,7 +1242,7 @@ def _mark_af_pattern_discordance(ws, discordance_cfg: dict | None = None) -> Non
             cell = ws.cell(row=r, column=hgvsc_col)
             cell.fill = _C_RED
             cell.font = _C_RED_FONT
-            c = Comment(msg, "vcf_filter")
+            c = Comment(msg, "KODEX")
             c.width = 380
             c.height = 100
             cell.comment = c
@@ -1355,7 +1355,7 @@ def write_output(
 # ---------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Filter NiourK XLSX for TSC1/TSC2 pathogenic candidates.")
+    parser = argparse.ArgumentParser(description="KODEX — Déchiffre les variants NiourK (TSC1/TSC2).")
     parser.add_argument("xlsx", type=Path, help="Input NiourK XLSX file")
     parser.add_argument("--config", type=Path, default=Path(__file__).parent / "config.yaml", help="YAML config file")
     parser.add_argument("--beta", action="store_true", help="Skip pre-exclusions — apply sheet filters on raw variants only")

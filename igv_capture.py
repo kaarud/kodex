@@ -1,4 +1,4 @@
-"""igv_capture.py — Generate IGV screenshots for annotated TSC1/TSC2 variants."""
+"""igv_capture.py — KODEX : captures IGV pour les variants TSC1/TSC2 annotés."""
 
 import argparse
 import socket
@@ -312,7 +312,7 @@ def find_bams(sample_id: str, bam_dir: Path) -> dict | None:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Génère des captures IGV pour les variants annotés d'un XLSX filtré."
+        description="KODEX — Génère des captures IGV pour les variants annotés d'un XLSX filtré."
     )
     parser.add_argument("xlsx", type=Path, help="Fichier *_filtered.xlsx")
     parser.add_argument("--port",    type=int,  default=60151)

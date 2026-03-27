@@ -1,4 +1,4 @@
-"""igv_bookmark.py — Inject annotated TSC1/TSC2 variants as IGV Regions of Interest."""
+"""igv_bookmark.py — KODEX : injecte les variants annotés comme ROI dans IGV."""
 
 import argparse
 from pathlib import Path
@@ -16,7 +16,7 @@ from igv_capture import (
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Injecte les variants annotés d'un XLSX filtré comme ROI dans IGV."
+        description="KODEX — Injecte les variants annotés d'un XLSX filtré comme ROI dans IGV."
     )
     parser.add_argument("xlsx", type=Path, help="Fichier *_filtered.xlsx")
     parser.add_argument("--port", type=int, default=60151)

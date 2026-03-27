@@ -1,4 +1,4 @@
-name: ngs_reanalysis
+name: kodex
 channels:
   - conda-forge
 dependencies:
