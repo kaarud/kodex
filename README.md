@@ -144,5 +144,13 @@ Si vous utilisez KODEX dans vos travaux, merci de le citer (voir `CITATION.cff` 
 
 ## Licence
 
-KODEX est distribué sous licence [GNU GPL v3](LICENSE).
+KODEX est distribué sous licence [MIT](LICENSE).
 Les données patients et les fichiers de résultats NiourK ne sont **jamais** inclus dans ce dépôt (voir `.gitignore`).
+
+---
+
+## Crédits
+
+Une grande partie du code de KODEX a été générée avec l'assistance de l'IA
+[Claude](https://www.anthropic.com/claude) (Anthropic). Chaque contribution a
+été relue et validée par l'auteur avant intégration.

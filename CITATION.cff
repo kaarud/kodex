@@ -7,7 +7,7 @@ authors:
     affiliation: "CHU Angers — Département de Génétique Médicale"
 version: 1.0.0
 date-released: 2026-03-27
-license: GPL-3.0
+license: MIT
 repository-code: "https://github.com/akseldura/kodex"
 abstract: >
   KODEX est un plugin de post-traitement pour les fichiers XLSX produits par le pipeline
